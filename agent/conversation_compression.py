@@ -1569,9 +1569,12 @@ def _adopt_live_compression_child(
     agent._last_flushed_db_idx = len(recovered)
     agent._flushed_db_message_session_id = child_session_id
     agent._flushed_db_message_ids = {id(message) for message in recovered if isinstance(message, dict)}
-    on_session_start = getattr(agent.context_compressor, "on_session_start", None)
-    if callable(on_session_start):
-        with _swallow('context engine compression-child adoption failed: %s'):
+    from agent.context_compressor import ContextCompressor
+    engine = agent.context_compressor
+    on_session_start = getattr(engine, "on_session_start", None)
+    with _swallow('context engine compression-child adoption failed: %s'):
+        # Only the creating compressor should copy parent guards. An adopter loads the child's own window.
+        if type(engine) is not ContextCompressor and callable(on_session_start):
             on_session_start(
                 child_session_id, boundary_reason="compression", old_session_id=parent_session_id,
                 session_db=context_engine_session_db(agent, session_db),
@@ -1579,12 +1582,9 @@ def _adopt_live_compression_child(
                 conversation_id=getattr(agent, "_gateway_session_key", None),
                 **context_engine_persistence(on_session_start, store),
             )
-    else:
-        bind_state = getattr(agent.context_compressor, "bind_session_state", None)
-        if callable(bind_state):
-            with contextlib.suppress(Exception):
-                bind_state(session_db=context_engine_session_db(agent, session_db), session_id=child_session_id,
-                           **context_engine_persistence(bind_state, store))
+        elif callable(bind_state := getattr(engine, "bind_session_state", None)):
+            bind_state(session_db=context_engine_session_db(agent, session_db), session_id=child_session_id,
+                       **context_engine_persistence(bind_state, store))
     with _swallow('memory manager compression-child adoption failed: %s'):
         if agent._memory_manager:
             agent._memory_manager.on_session_switch(
