@@ -1,16 +1,19 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { TitlebarControls } from '@/app/shell/titlebar-controls'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { $narrowOverlayPaneIds } from '@/components/pane-shell/narrow-overlay-state'
 import { registry } from '@/contrib/registry'
 import { $paneStates, setPaneWidthOverride } from '@/store/panes'
 import { $connection } from '@/store/session'
-import { stubResizeObserver } from '@/test/jsdom'
+import { stubMenuDomApis, stubResizeObserver } from '@/test/jsdom'
 
 import { group, split } from '../model'
 import { $hiddenTreePanes, $layoutTree, $narrowViewport, declareDefaultTree } from '../store'
 
+import { CompactTabPicker } from './compact-tab-picker'
 import { NarrowOverlays, narrowOverlayWidth } from './narrow-overlays'
 
 // Ground truth for "the Bots tab is still visible when the sessions sidebar
@@ -109,12 +112,47 @@ describe('narrow overlay in native Desktop', () => {
     )
     expect(queryByTestId('bots-body')).toBeTruthy()
 
-    act(() => window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'bots', mode: 'close' } })))
+    act(() =>
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'bots', mode: 'close' } }))
+    )
     expect(queryByTestId('bots-body')).toBeNull()
   })
 })
 
 describe('narrow overlay of a stacked zone', () => {
+  it('dismisses the open phone tab menu when the same tap opens the sidebar', async () => {
+    asBrowserHost()
+    stubMenuDomApis()
+    render(
+      <MemoryRouter>
+        <TitlebarControls onOpenSettings={() => {}} />
+        <CompactTabPicker
+          activeId="workspace"
+          newTab={null}
+          onSelect={() => {}}
+          tabs={[{ id: 'workspace', title: 'Chat' }]}
+        />
+        <NarrowOverlays />
+      </MemoryRouter>
+    )
+
+    const sidebar = screen.getByRole('button', { name: 'Show sidebar' })
+    const touch = { button: 0, pointerType: 'touch' }
+    const picker = screen.getByRole('button', { name: '1 tab Chat' })
+    fireEvent.pointerDown(picker, touch)
+    fireEvent.pointerUp(picker, touch)
+    fireEvent.click(picker)
+    expect(await screen.findByRole('menu')).toBeTruthy()
+    // Radix starts listening for outside presses on the next task.
+    await act(() => new Promise(resolve => setTimeout(resolve, 0)))
+    fireEvent.pointerDown(sidebar, touch)
+    fireEvent.pointerUp(sidebar, touch)
+    fireEvent.click(sidebar)
+
+    expect(screen.getByTestId('sessions-body')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
   it('dismisses an outside tap while preserving inside controls and cancelled gestures', () => {
     asBrowserHost()
     render(<NarrowOverlays />)
