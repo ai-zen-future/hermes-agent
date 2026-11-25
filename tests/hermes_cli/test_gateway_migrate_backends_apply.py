@@ -1411,16 +1411,16 @@ def test_the_managed_env_url_wins(home, capsys, monkeypatch):
     assert code == engine.EXIT_OK and out["plan"]["public_url"] == "https://managed.example"
 
 
-@pytest.mark.parametrize("webapp_url", [False, True])
-def test_an_enabled_secret_source_blocks_unless_webapp_public_url_is_set(home, capsys, monkeypatch, webapp_url):
+def test_an_enabled_secret_source_blocks_until_the_operator_sets_the_suggested_url(home, capsys, monkeypatch):
     config = "secrets:\n  vault:\n    enabled: true\ndashboard:\n  public_url: https://yaml.example\n"
-    if webapp_url:
-        config += "webapp:\n  public_url: https://chosen.example\n"
-
     code, out = _url_plan(home, capsys, monkeypatch, config)
 
-    blocked = any("external secret source is enabled" in b for b in out["plan"]["blockers"])
-    assert blocked is not webapp_url and (code == engine.EXIT_BLOCKED) is not webapp_url
+    local_url = "http://127.0.0.1:9119"
+    assert code == engine.EXIT_BLOCKED
+    assert any("webapp.public_url" in blocker and local_url in blocker for blocker in out["plan"]["blockers"])
+
+    code, out = _url_plan(home, capsys, monkeypatch, config + f"webapp:\n  public_url: {local_url}\n")
+    assert code == engine.EXIT_OK and out["plan"]["blockers"] == []
 
 
 # --- review round 2: a backend older than v2026.7.30 has no /api/health

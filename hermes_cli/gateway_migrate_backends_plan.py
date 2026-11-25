@@ -824,9 +824,12 @@ def secret_source_blocker(host) -> Optional[str]:
     if not (isinstance(secrets, dict) and any(isinstance(v, dict) and v.get("enabled") is True
                                                 for v in secrets.values())):
         return None
-    return ("An external secret source is enabled (secrets: in config.yaml), and it may set the old backend's "
-            "HERMES_DASHBOARD_PUBLIC_URL, so the public URL it serves cannot be told. Set webapp.public_url to "
-            "the address the Webapp should be reached at, then re-run. Nothing changed.")
+    return ("An external secret source is enabled in config.yaml and may set HERMES_DASHBOARD_PUBLIC_URL. "
+            "The migration does not read secrets to guess this URL. Set webapp.public_url in config.yaml to "
+            "the address you use to open the Webapp in a browser. The Webapp trusts this address for browser "
+            "requests and returns you there after sign-in. A LAN hostname is fine. For access only from this "
+            "computer, use a loopback URL such as http://127.0.0.1:9119 (use your Webapp's port). "
+            "Then re-run the migration. Nothing changed.")
 
 
 def _public_url(plan: BackendPlan, cfg: dict, env: Optional[dict]) -> None:
